@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "datafeed"
+version = "0.1.0"
+description = ""
+authors = ["Bart van Arnhem <bart@orbisk.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+kafka-python = "^2.0.2"
+randomname = "^0.2.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

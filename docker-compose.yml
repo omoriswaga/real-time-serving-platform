@@ -1,0 +1,104 @@
+version: '3.3'
+services:
+
+  # Needed by Kafka
+  
+  zookeeper:
+    image: wurstmeister/zookeeper
+
+  # This sets up the Kafka container configuring two listeners:
+  #
+  # - One for internal access within the docker-compose application (port 9092)
+  # - One for external access from outside (port 9094)
+  #
+  # You should not have to change any of this configuration. Uncomment the right
+  # KAFKA_BROKER constant in consumers/consumer.py to choose either one.
+  
+  kafka:
+    image: wurstmeister/kafka
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://:9092,OUTSIDE://localhost:9094
+      KAFKA_LISTENERS: INSIDE://:9092,OUTSIDE://:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+    depends_on:
+      - "zookeeper"
+    # Expose port 9094 for connecting from outside of the Docker container
+    ports:
+      - target: 9094
+        published: 9094
+        protocol: tcp
+        mode: host
+
+  redpanda:
+    image: docker.redpanda.com/vectorized/console:latest
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_SASL_ENABLED: false
+      KAFKA_SCHEMAREGISTRY_ENABLED: false
+      # KAFKA_SCHEMAREGISTRY_URLS: "http://schemaregistry:8085"
+    depends_on:
+      - "zookeeper"
+      - "kafka"
+    restart: on-failure
+    ports:
+      - "8111:8080"
+
+  # The datafeed component sends simulated messages to the Kafka bus
+  datafeed:
+    build: datafeed
+    environment:
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./data:/data
+  
+  server:
+    build: monitoring-server
+    ports:
+      - "1025:1025"
+    restart: on-failure
+  
+  # Example Python consumer (enabled by default)
+  consumer:
+    build: consumer
+    environment:
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./data:/data
+    ports:
+      - "8000:8000" 
+  
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    restart: on-failure
+    volumes:
+      - ./prometheus:/etc/prometheus
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+    restart: on-failure
+
+  # API that reports back the result
+  api:
+    build: api
+    environment:
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./data:/data
+    ports:
+      - target: 5000
+        published: 5000
+        protocol: tcp
+        mode: host
